@@ -1,0 +1,892 @@
+#!/usr/bin/env bash
+
+#####################
+# Developed by Luiz Felipe (2019)
+#   https://github.com/Silva97
+#   felipe.silva337@yahoo.com
+#
+# Distributed under the MIT License.
+# For see more details, see the LICENSE file.
+#####################
+
+AUTHOR="Luiz Felipe <https://github.com/Silva97>"
+LICENSE="MIT License"
+EX=${0##[^\.]*/}
+
+
+if [ $# -eq 0 ]; then
+    echo "Developed by $AUTHOR (2019)"
+    echo "Distributed under the $LICENSE."
+    echo "Usage: $EX [-h|-e|-b] <mbr|raw|template_name> [option=value...]"
+    echo "For more help: $EX -h"
+
+    exit
+fi
+
+if [ "$NEW_TPDIR" != "" ]; then
+    new_tpdir="$NEW_TPDIR"
+else
+    new_tpdir=~/.new
+fi
+
+new_out="/dev/stdout"
+new_in="/dev/zero"
+new_log="/dev/stderr"
+new_block=1
+new_size=16
+new_seek=0
+
+
+case $1 in
+    -b|--bin-template)
+        is_bin="true"
+        shift
+        ;;
+    -e|--example)
+        case $2 in
+            mbr)
+                echo "00000000 | b4 0e b0 48 cd 10 b0 69 cd 10 f4 00 00 00 00 00 |"
+
+                for i in $(seq 1 30); do
+                    printf "%08x | 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |\n" "$((16 * $i))"
+                done
+
+                echo "000001f0 | 00 00 00 00 00 00 00 00 00 00 00 00 00 00 55 aa |"
+                ;;
+            raw)
+                echo "Raw binary is just a dump of data. No examples for this type."
+                ;;
+            bin-mbr)
+                echo "x b4 0e"
+                echo "x b0 48"
+                echo "x cd 10"
+                echo
+                echo "x b0 69"
+                echo "x cd 10"
+                echo "x f4"
+                echo
+                echo "align 510"
+                echo "b16   0xaa55"
+                ;;
+            bin-var)
+                echo "#!/Shebang_example"
+                echo
+                echo "# This text is displayed if you run:"
+                echo "#   $EX -h bin-template_name"
+                echo
+                echo "# The help text is the firsties commentaries in the binary template."
+                echo "# The first instruction is the end of the help text."
+                echo "# The shebang is not displayed."
+                echo
+                echo "## Use one more # to define the premature end of the help text."
+                echo "#  This text NOT is displayed."
+                echo
+                echo "set text = Default TEXT"
+                echo "set text = .text"
+                echo "# You can use this syntax to define default values to"
+                echo "# options without if statement."
+                echo
+                echo "if .type"
+                echo "    switch .type"
+                echo "        case 1"
+                echo "            set type = First type"
+                echo "        case 2"
+                echo "            set type = Second type"
+                echo "        case 3"
+                echo "            set type = Last type"
+                echo "        default"
+                echo "            error 'type' is 1, 2 or 3."
+                echo "            help"
+                echo "    endswitch"
+                echo "else"
+                echo "    # Default type"
+                echo "    set type = First type"
+                echo "endif"
+                echo
+                echo "str <"
+                echo "str \$type"
+                echo "str >\n"
+                echo "str \$text"
+                echo "str \n"
+                ;;
+            bin-all)
+                echo "# One line commentary"
+                echo "x     41 42 43 44 0a"
+                echo "b8    97"
+                echo "b16   0x4546"
+                echo "b32   0x4748494a"
+                echo "b64   0xdeadbeeffeebdaed"
+                echo
+                echo "str     This is a text.\n"
+                echo "str \\   This is a text with spaces in the start.\n"
+                echo "str     .text   # 'text' option"
+                echo "str     \\.Text started with '.'\n"
+                echo "str     This is \# not a commentary."
+                echo "str \"Using quotes to not insert the right spaces here ->\"  # Commentary"
+                echo
+                echo "dump  10"
+                echo
+                echo "if .file"
+                echo "    file  .file    # .file is expanded to 'file' option"
+                echo "else"
+                echo "    error 'file' option not defined."
+                echo "    help"
+                echo "endif"
+                echo
+                echo "if \$size > 1024"
+                echo "    log \$size"
+                echo "    error 'file' is too big."
+                echo "    stop"
+                echo "endif"
+                echo
+                echo "align 1024"
+                ;;
+            template*)
+                echo "/***"
+                echo "Developed by {{author|\$USER}}"
+                echo
+                echo "{{!license|LICENSE}}"
+                echo "***/"
+                echo
+                echo "#include <{{header|stdio.h}}>"
+                echo
+                echo "int main({{args}}) {"
+                echo "    {{-}}"
+                echo "    return 0;"
+                echo "}"
+                ;;
+            *)
+                echo "You want a example to '$2'???"
+                echo "See help: $EX -h"
+                ;;
+        esac
+
+        exit
+        ;;
+    -h|--help)
+        if [ "$2" != "" ]; then
+            if [ -f "$2" ]; then
+                file="$2"
+            elif [ -f "$new_tpdir/$2" ]; then
+                file="$new_tpdir/$2"
+            else
+                echo "No template '$2' found. (is a regular file?)"
+                exit 1
+            fi
+
+            while read -r line; do
+                if echo "$line" | grep -qE "^\s*#\!|^\s*$"; then
+                    continue
+                elif echo "$line" | grep -qE "^\s*#([^#]|$)"; then
+                    text=$(echo "$line" | sed -E "s/^\s*#\s?(.*)/\1/")
+                    echo "$text"
+                else
+                    exit
+                fi
+            done < "$file"
+
+            exit
+        fi
+
+        echo "Developed by $AUTHOR (2019)"
+        echo "Distributed under the $LICENSE."
+        echo "Tool for create binary files or text files using templates."
+        echo
+        echo "$EX [-h|-e|-b] <mbr|raw|template_name> [option=value...]"
+        echo "    -h,--help [bin-t]   Show this help message."
+        echo "                        If specified a binary template name, shows the"
+        echo "                        content of the firsties commentaries in the file."
+        echo "    -e,--example <type> Show an example file of specified type."
+        echo "    -b,--bin-template   Interpret the template like a binary template."
+        echo
+        echo "    mbr              Create a new 512 bytes MBR image file."
+        echo "                       in    = File for read bytes."
+        echo "                       out   = File for write the image."
+        echo "    raw              Create a raw binary file."
+        echo "                       in    = File for read bytes."
+        echo "                       out   = File for write the raw image."
+        echo "                       block = Size in bytes of a block."
+        echo "                       size  = Number of blocks to write."
+        echo "                       seek  = Seek N blocks at start of output."
+        echo "    template_name    Name of the template to create a file."
+        echo "                       out   = File to save the processed template."
+        echo "                       log   = File to save the log in binary templates."
+        echo "                       tpdir = Directory to search the templates."
+        echo
+        echo "OPTIONS"
+        echo "    Options can be defined using the format:"
+        echo "      option_name[=value]"
+        echo "    If a value not is specified, set the option value to your name."
+        echo "    You can use it to boolean options in binary templates."
+        echo "    Many options have default values and can be personalized."
+        echo "    See below the options and your values:"
+        echo
+        echo "    in       = $new_in"
+        echo "    out      = $new_out"
+        echo "    log      = $new_log"
+        echo "    block    = $new_block"
+        echo "    size     = $new_size"
+        echo "    seek     = $new_seek"
+        echo "    tpdir    = $new_tpdir"
+        echo
+        echo "    Search for template files in the local and 'tpdir' directory."
+        echo "    'tpdir' is set to enviromnent variable 'NEW_TPDIR' if defined."
+        echo
+        echo "TEXT TEMPLATE"
+        echo "    Text template files can have special tag to be replaced by the value"
+        echo "    of a option on the format:"
+        echo "      {{[!]option_name[|Default value]}}"
+        echo
+        echo "    You can use {{-}} to be replaced by the input."
+        echo "    Use !!! to represent the end of the input."
+        echo
+        echo "    If use ! before the option name, read the content of a file defined"
+        echo "    by the option."
+        echo "    You can insert a environment variable name by default value. Example:"
+        echo "      {{name|\$USER}}"
+        echo
+        echo "    To see an example of text template, run:"
+        echo "      $EX -e template"
+        echo
+        echo "BINARY TEMPLATE"
+        echo "    The binary template file must have the 'bin-' prefix in the name."
+        echo "    Binary templates is commands to dump content on the 'out' file."
+        echo "    The file have one command per line on the format:"
+        echo "      command argument"
+        echo
+        echo "    Use # to write a one-line commentary."
+        echo "    All numeric arguments can be in decimal, hexadecimal or octal."
+        echo "    Is possible use .option_name in the argument to expand a option value."
+        echo "    And use \$variable_name to expand the value of a variable."
+        echo "    Special variables can be read:"
+        echo
+        echo "      \$size     The size in bytes of the data writed to 'out' file."
+        echo "      \$count    The size in bytes since the last 'recount' command."
+        echo
+        echo "    See below the list of commands:"
+        echo
+        echo "    x <hh hh...> Dump the sequence of hexadecimal bytes with 2 characters."
+        echo "                 Example:"
+        echo "                   x 41 42 43 44 0a"
+        echo
+        echo "    b8,b16,b32,b64 <N>"
+        echo "                 Dump 8, 16, 32 or 64 bit value respectively. (little-endian)"
+        echo "                 Examples:"
+        echo "                   b8  65       # Decimal value"
+        echo "                   b16 0x41     # Hexadecimal value"
+        echo "                   b32 0101     # Octal value"
+        echo "                   b64 0x1122334455667788"
+        echo
+        echo "    dump <N>     Dump N zero bytes. (0x00)"
+        echo
+        echo "    align <N>    Align the size of the file to N bytes, dumping zero bytes."
+        echo
+        echo "    str <text>   Dump a string. Is possible use C-like escaping sequence."
+        echo "                 Use \\$, \\. and \\# to use special characters in a string."
+        echo "                 Is possible escape a space if want insert spaces in the"
+        echo "                 start of the string."
+        echo "                 Example:"
+        echo "                   str \  Hello World!\n"
+        echo
+        echo "    file <name>  Dump the content of a file."
+        echo
+        echo "    stop         Stop the interpretation of the template."
+        echo
+        echo "    help         Show help informations and stop."
+        echo
+        echo "    log <text>   Write text in the 'log' file specifing the line number."
+        echo
+        echo "    error <text> Write text in stderr specifing the line number."
+        echo
+        echo "    recount      Set the variable \$count to zero."
+        echo
+        echo "    set <variable> [<operator> <value>]"
+        echo "                 Set the value of a variable. If not specified a operator"
+        echo "                 and value, just set the value of the variable to 'null'."
+        echo "                 If value is void, don't edit the value of the variable."
+        echo "                 Value can be a '\$variable' or '.option'."
+        echo "                 Operator can be:"
+        echo "                   =       Set the variable to specific value."
+        echo "                   +=      Add the variable value with a numeric value."
+        echo "                   -=      Subtract with a numeric value."
+        echo "                   *=      Multiply with a numeric value."
+        echo "                   /=      Divide with a numeric value."
+        echo "                   %=      Set to modulous of the division with value."
+        echo
+        echo "    unset <variable>"
+        echo "                 Undefine a variable."
+        echo
+        echo "    Is possible use if..elif..else statement following the format:"
+        echo "      if [not] <expression>"
+        echo "          <commands>"
+        echo "      elif [not] <expression>"
+        echo "          <commands>"
+        echo "      else"
+        echo "          <commands>"
+        echo "      endif"
+        echo
+        echo "    Commands is any command except the 'if' statement."
+        echo "    If use 'not' word, negate the expression."
+        echo "    Expression follow the format:"
+        echo "      <value> [<operator> <value>]"
+        echo "    Value is possible expand a '\$variable' or '.option' value."
+        echo "    Operator can be:"
+        echo "      ==      Verify if two strings are equals."
+        echo "      !=      Verify if two strings are differents."
+        echo "      =       Compare two numeric values."
+        echo "      >=      Verify if the numeric value is greater than/equal."
+        echo "      <=      Verify if less than or equal."
+        echo "      >       Greater than."
+        echo "      <       Less than."
+        echo
+        echo "    If expression is one value, true if not is void and false otherwise."
+        echo
+        echo "    The switch..case statement is:"
+        echo "      switch <value>"
+        echo "          case <value>"
+        echo "              <commands>"
+        echo "          case <value>"
+        echo "              <commands>"
+        echo "          default"
+        echo "              <commands>"
+        echo "      endswitch"
+        echo
+        echo "    The 'default' statement are optional and executed if any case"
+        echo "    statement is not taken."
+        echo "    Value is possible use a '\$variable' or '.option'."
+        echo
+        echo "    In the commands: str, error, log, switch and case"
+        echo "    You can use quotes to define the limitations of the argument. Example:"
+        echo "      str \"Hello World\\n\""
+        echo "    Use \\\" to escape a quote. "
+        echo
+        echo "SCRIPTING"
+        echo "    You can run a binary template like a script using the shebang."
+        echo "    Set -b option to not necessity the 'bin-' and, if this option is defined,"
+        echo "    the user of the script can run './bin-template -h' for read the help."
+        echo
+        echo "To see examples of binary templates, run the commands below:"
+        echo "  $EX -e bin-mbr"
+        echo "  $EX -e bin-all"
+        echo "  $EX -e bin-var"
+        echo
+        echo
+
+        exit
+        ;;
+esac
+
+
+
+function perror() {
+    (
+        echo -e "ERROR on \x1B[94;1m$1\x1B[0m command."
+        echo -e "Line $2: $3"
+        echo -e "> $4"
+    )>&2
+}
+
+function ntob() {
+    local number=$(printf "%0$(($2 * 2))x" "$1")
+
+    case $2 in
+        1)
+            echo -ne $(echo $number | sed -E 's/(0x)?(..)/\\x\2/gi')
+            ;;
+        2)
+            echo -ne $(echo $number | sed -E 's/(0x)?(..)(..)/\\x\3\\x\2/gi')
+            ;;
+        4)
+            echo -ne $(echo $number | sed -E 's/(0x)?(..)(..)(..)(..)/\\x\5\\x\4\\x\3\\x\2/gi')
+            ;;
+        8)
+            echo -ne $(echo $number | sed -E 's/(0x)?(..)(..)(..)(..)(..)(..)(..)(..)/\\x\9\\x\8\\x\7\\x\6\\x\5\\x\4\\x\3\\x\2/gi')
+            ;;
+    esac
+}
+
+function write() {
+    echo -ne "$2" | wc -c
+    echo -ne "$2" >&$1
+}
+
+function dump() {
+    local content=""
+    for i in $(seq 1 $1); do
+        content+="\x00"
+    done
+
+    echo -ne "$content"
+}
+
+function expand() {
+    if [ "${1:0:1}" == "." ]; then
+        local prefix="new_"
+    elif [ "${1:0:1}" == "$" ]; then
+        local prefix="var_"
+    elif [ "${1:0:1}" == '"' ]; then
+        local text=$(echo "$1" | sed -E 's/"((\"|[^"])*)".*/\1/' | sed -E 's/\\"/"/g')
+        echo -n "$text"
+        return
+    else
+        echo -n "$1"
+        return
+    fi
+
+    local name="${prefix}${1:1}"
+    echo -n "${!name}"
+}
+
+function if_statement() {
+    if [ "$1" == "not" ]; then
+        local true="false"
+        local false="true"
+        shift
+    else
+        local true="true"
+        local false="false"
+    fi
+
+
+    local v1=$(expand "$1")
+    if [ "$2" == "" ]; then
+        [ "$v1" != "" ] && echo -n "$true" || echo -n "$false"
+        return
+    elif [ "$3" == "" ]; then
+        line="${command} ${ECOLOR}${argument}${NCOLOR}"
+        perror "$command" "$line_number" "$line" "Invalid expression. See help: $EX -h"
+        exit 2
+    fi
+
+
+    local operator="$2"
+    shift 2
+    local v2=$(expand "$*")
+    local result=""
+
+    case $operator in
+        "=="|"!=");;                    # Do nothing
+        "=")       operator="-eq" ;;
+        ">=")      operator="-ge" ;;
+        ">")       operator="-gt" ;;
+        "<")       operator="-lt" ;;
+        "<=")      operator="-le" ;;
+    esac
+
+    if [ "${operator:0:1}" == "-" ]; then
+        v1=$(($v1))
+        v2=$(($v2))
+    fi
+
+
+    if [ "$v1" $operator "$v2" ]; then
+        result=$true
+    else
+        result=$false
+    fi
+
+    echo -n "$result"
+}
+
+function set_var() {
+    local name=$1
+    local operator=$2
+    shift 2
+    local value=$(expand "$*")
+
+    [ "$value" == "" ] && return
+
+    case $name in
+        size)
+            perror "$command" "$line_number" "$line" "Variable 'size' is readonly."
+            exit 2
+            ;;
+        count)
+            perror "$command" "$line_number" "$line" "Variable 'count' is readonly. (See 'recount' command)"
+            exit 2
+            ;;
+    esac
+
+    case $operator in
+        "=")
+            declare -g var_$name="$value"
+            ;;
+        "+="|"-="|"*="|"/="|"%=")
+            let "var_${name}${operator}${value}"
+            ;;
+        *)
+            declare -g var_$name="null"
+            ;;
+    esac
+}
+
+
+if [ "$is_bin" == "true" ] && ([ "$2" == "-h" ] || [ "$2" == "--help" ]); then
+    $0 -h $1
+    exit
+fi
+
+first="$1"
+# Parsing options
+while [ "$2" != "" ]; do
+    name=${2%=*}
+    value=${2#*=}
+
+    if echo "$name" | grep -qE "[^a-z0-9_]"; then
+        (
+            echo "Invalid option name: '$name'"
+            echo "See help: $EX -h"
+        )>&2
+        exit 1
+    fi
+
+    declare new_$name="$value"
+    shift
+done
+
+
+
+case $first in
+    mbr)
+        dd if="$new_in" of="$new_out" bs=510 count=1 2>/dev/null
+        echo -ne "\x55\xAA" | dd if=/dev/stdin of="$new_out" bs=1 seek=510 count=2 2>/dev/null
+        ;;
+    raw)
+        dd if="$new_in" of="$new_out" bs="$new_block" count="$new_size" seek="$new_seek" 2>/dev/null
+        ;;
+    *)
+        if [ -f "$first" ]; then
+            file="$first"
+        elif [ -f "$new_tpdir/$first" ]; then
+            file="$new_tpdir/$first"
+        else
+            echo "No template '$first' found. (is a regular file?)"
+            exit 1
+        fi
+
+
+        if [ "$is_bin" == "true" ] || [ "${first:0:4}" == "bin-" ]; then
+            regex='^\s*(\S+)\s+((\\#|[^#])*)(#.*)?'
+            ECOLOR="\x1B[91;1m"
+            NCOLOR="\x1B[0m"
+            line_number=1
+            var_size=0
+            var_count=0
+
+            cmd_if=""
+            cmd_else=""
+            cmd_lineif=0
+            cmd_switch=""
+            cmd_lineswitch=0
+            switch_value=""
+            switch_default=""
+
+            if [ "$new_log" != "/dev/stderr" ]; then
+                echo "-- Log to '$first' --" > "$new_log"
+            fi
+
+            echo -n > "$new_out" # Erase the content of the file
+            exec 3<>"$new_out"
+            while read -r line; do
+                if echo "$line" | grep -qE "^\s*#|^\s*$"; then
+                    let line_number+=1
+                    continue
+                fi
+
+                l_size=$var_size
+
+                command=$(echo  "$line" | sed -E "s/$regex/\1/")
+                argument=$(echo "$line" | sed -E "s/$regex/\2/")
+
+
+                # if statement
+                case $command in
+                    elif)
+                        case $cmd_if in
+                            true)
+                                cmd_if="false"
+                                cmd_else="false"
+                                ;;
+                            false)
+                                if [ "$cmd_else" != "false" ]; then
+                                    cmd_if=$(if_statement $argument)
+                                fi
+                                ;;
+                            *)
+                                perror "$command" "$line_number" "$line" "'elif' statement used without a previous 'if' statement."
+                                ;;
+                        esac
+
+                        let line_number+=1
+                        continue
+                        ;;
+                    else)
+                        if [ "$cmd_else" != "false" ]; then
+                            case $cmd_if in
+                                true)
+                                    cmd_if="false"
+                                    ;;
+                                false)
+                                    cmd_if="true"
+                                    ;;
+                                *)
+                                    perror "$command" "$line_number" "$line" "'else' statement used without a previous 'if' statement."
+                                    ;;
+                            esac
+                        fi
+
+                        let line_number+=1
+                        continue
+                        ;;
+                    endif)
+                        if [ "$cmd_if" == "" ]; then
+                            perror "$command" "$line_number" "$line" "'endif' statement used without a previous 'if' statement."
+                            exit 2
+                        fi
+
+                        cmd_if=""
+                        cmd_else=""
+                        let line_number+=1
+                        continue
+                        ;;
+                esac
+
+                if [ "$cmd_if" == "false" ]; then
+                    let line_number+=1
+                    continue
+                fi
+
+                # Switch statement
+                case $command in
+                    endswitch)
+                        if [ "$cmd_switch" == "" ]; then
+                            perror "$command" "$line_number" "$line" "'endswitch' statement used without a previous 'switch' statement."
+                            exit 2
+                        fi
+
+                        cmd_switch=""
+                        switch_value=""
+                        let line_number+=1
+                        continue
+                        ;;
+                    case)
+                        if [ "$switch_value" == "" ]; then
+                            perror "$command" "$line_number" "$line" "case statement must be used in a switch statement."
+                            exit 2
+                        elif [ "$switch_value" == "$argument" ]; then
+                            cmd_switch="true"
+                            switch_default="false"
+                        else
+                            cmd_switch="false"
+                        fi
+
+                        let line_number+=1
+                        continue
+                        ;;
+                    default)
+                        if [ "$switch_value" == "" ]; then
+                            perror "$command" "$line_number" "$line" "case statement must be used in a switch statement."
+                            exit 2
+                        fi
+
+                        cmd_switch="$switch_default"
+
+                        let line_number+=1
+                        continue
+                        ;;
+                esac
+
+                if [ "$cmd_switch" == "false" ]; then
+                    let line_number+=1
+                    continue
+                fi
+
+
+                # Expand $variables and .options
+                if ! echo "$command" | grep -qE "^(if.*|set$)"  && \
+                   ([ "${argument:0:1}" == "$" ] || [ "${argument:0:1}" == "." ]); then
+
+                    value=$(expand $argument)
+                    if [ "$value" == "" ]; then
+                        line="$command ${ECOLOR}${argument}${NCOLOR}"
+                        perror "$command" "$line_number" "$line" "Option/Variable not defined."
+                        exit 2
+                    fi
+
+                    argument=$(echo -ne "$value")
+                elif echo "$command" | grep -qE "^(str|error|log|switch|case)$"; then
+                    argument=$(expand "$argument")
+                fi
+
+
+                case $command in
+                    x)
+                        if ! echo $argument | grep -qiE "^([a-f0-9]{2}(\s|$))+$"; then
+                            line=$(echo "${line:1}" | sed -E "s/([^a-f0-9 ]+)/$ECOLOR\1$NCOLOR/g")
+                            perror "$command" "$line_number" "x $line" "Invalid argument."
+                            exit 2
+                        fi
+
+                        content=$(echo "$argument" | sed -E 's/([a-f0-9]{2})\s*/\\x\1/g')
+                        let var_size+=$(write 3 "$content")
+                        ;;
+                    b8|b16|b32|b64)
+                        if ! echo $argument | grep -qiE "^(0x[a-f0-9]+|[0-9]+)\s*$"; then
+                            line="$command ${ECOLOR}${argument}${NCOLOR}"
+                            perror "$command" "$line_number" "$line" "Invalid argument."
+                            exit 2
+                        fi
+
+                        bit=${command:1}
+
+                        # <TODO>: Implement system to verify 64 bit values.
+                        if [ "$bit" != "64" ]; then
+                            max=$((2 ** $bit - 1))
+
+                            if [ $(($argument)) -gt $max ]; then
+                                perror "$command" "$line_number" "$line" "Argument size exceed $bit bit. (max. $max)"
+                                exit 2
+                            fi
+                        fi
+
+                        content=$( ntob $argument $((bit / 8)) | sed -E 's/\x00/\\0/g' )
+                        let var_size+=$(write 3 "$content")
+                        ;;
+                    str)
+                        argument=$(echo "$argument" | sed -E 's/\\(\$|#|\.| )/\1/g')
+                        let var_size+=$(write 3 "$argument")
+                        ;;
+                    file)
+                        # <FIXME>: Breakline in the end of the file is missing.
+                        content=$(sed -E 's/\x00/\\0/g' < "$argument")
+                        let var_size+=$(write 3 "$content")
+                        ;;
+                    dump)
+                        dump $(($argument)) >&3
+                        let var_size+=$argument
+                        ;;
+                    align)
+                        n=$(($argument - $var_size))
+                        if [ $n -gt 0 ]; then
+                            dump $n >&3
+                            let var_size+=$n
+                        elif [ $n -lt 0 ]; then
+                            perror "$command" "$line_number" "$line" "Size exceeded $argument."
+                            exit 2
+                        fi
+                        ;;
+                    stop)
+                        break
+                        ;;
+                    recount)
+                        var_count=0
+                        ;;
+                    set)
+                        set_var $argument
+                        ;;
+                    unset)
+                        name=$(echo "$argument" | sed -E "s/^([a-z0-9_]+).*/\1/")
+                        unset var_$name
+                        ;;
+                    log)
+                        echo "Log [$line_number]: $argument" >> "$new_log"
+                        ;;
+                    error)
+                        echo "Error [$line_number]: $argument" >&2
+                        ;;
+                    if)
+                        cmd_if=$(if_statement $argument)
+                        cmd_else="true"
+                        cmd_lineif=$line_number
+                        ;;
+                    switch)
+                        cmd_lineswitch=$line_number
+                        switch_value="$argument"
+                        switch_default="true"
+                        ;;
+                    help)
+                        (
+                            echo "See help: $EX -h"
+                            echo "For see help about this specific template, run:"
+                            echo "  $EX -h $first"
+                        )>&2
+                        exit 3
+                        ;;
+                    *)
+                        perror "$command" "$line_number" "$line" "Invalid command. See help: $EX -h"
+                        exit 2
+                esac
+
+                let line_number+=1
+
+                if [ $var_size -gt $l_size ]; then
+                    let var_count+=$var_size-$l_size
+                fi
+            done < "$file"
+
+            if [ "$cmd_if" != "" ]; then
+                echo "Line $cmd_lineif: Expecting 'endif' statement." >&2
+                exit 2
+            elif [ "$cmd_switch" != "" ]; then
+                echo "Line $cmd_lineswitch: Expecting 'endswitch' statement." >&2
+                exit 2
+            fi
+        else
+            content=$(< "$file")
+            tmpfile="/tmp/new$RANDOM"
+            < "$file" grep -ioE "\{\{(-|\!?[a-z0-9_]+)(\|[^\}]*)?\}\}" > "$tmpfile"
+
+            exec 3<>"$tmpfile"
+            while IFS= read -u3 line; do
+                name=$(echo $line | sed -E "s/\{\{(\!?[a-z0-9_]+|-)(\|[^\}]*)?\}\}/\1/")
+
+                if [ "$name" == "-" ]; then
+                    value=""
+                    read input
+
+                    while [ "$input" != "!!!" ]; do
+                        [ "$value" != "" ] && value+="\n"
+                        value+="$input"
+                        read input
+                    done
+                else
+                    default=$(echo $line | sed -E "s/\{\{\!?[a-z0-9_]+(\|([^\}]*))?\}\}/\2/")
+                    isfile=""
+
+                    if [ "${name:0:1}" == "!" ]; then
+                        name="${name:1}"
+                        isfile="true"
+                    fi
+
+                    name="new_$name"
+                    value="${!name}"
+
+                    if [ "$value" == "" ]; then
+                        if [ "${default:0:1}" == '$' ]; then
+                            default="${default:1}"
+                            value="${!default}"
+                        else
+                            value="$default"
+                        fi
+                    fi
+
+                    if [ "$isfile" == "true" ]; then
+                        if [ -e "$value" ]; then
+                            value=$(< "$value")
+                        else
+                            value=""
+                        fi
+                    fi
+                fi
+
+
+                line=$(echo  -n "$line"   | sed -E "s/[^a-z0-9_ ]/\\\&/gi")
+                value=$(echo -n "$value"  | sed -E -e "s/[^a-z0-9_ ]/\\\&/gi" \
+                                                   -e ': s; N; s/\n/\\n/g; t s')
+                content=$(echo "$content" | sed -E "s/$line/$value/g")
+            done
+
+            echo "$content" > "$new_out"
+        fi
+        ;;
+esac

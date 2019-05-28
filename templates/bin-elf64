@@ -1,0 +1,99 @@
+# Binary template for create minimal ELF64 executable.
+# Developed by Luiz Felipe <https://github.com/Silva97>
+#
+# OPTIONS
+#     file     File for read the code to write in the entry point.
+#     code     The immediate code to insert in entry point.
+#              You can use C-like escape sequence for specifie the bytes.
+#              Example: code="\xb8\x07\x00\x00\x00"
+#     max      The maximum size of the binary file. (Default: 2048)
+#
+# * Entry point in virtual address: 0x401078 | 0x78 raw address.
+# * The segment have flags RWX, you can write in the code memory.
+#
+# Example of code with NASM syntax:
+# org  0x401078
+# bits 64
+#
+# mov rax, 1
+# mov rdi, 1
+# mov rsi, txt
+# mov rdx, TSIZE
+# syscall
+#
+# mov rax, 60
+# xor rdi, rdi
+# syscall
+#
+# txt:  db  `Hello World!\n\0`
+# TSIZE equ $-txt
+#
+
+if .out == "/dev/stdout"
+    error "Please specifie 'out' file. This is a binary file not text."
+    help
+endif
+
+set max = "2048"
+set max = .max    # Maximum size of the file
+
+
+## ELF header ##
+x    7f 45 4c 46 # Magic number
+x    02          # Class
+x    01          # Data
+x    01          # Version
+x    01          # OS ABI
+x    00          # ABI Version
+dump 7           # Reserved
+
+
+b16 2          # Type
+b16 0x3e       # Machine
+b32 1          # Version
+b64 0x401078   # Entry point
+b64 64         # Program header offset
+b64 0xffffffff # Section header offset
+b32 0          # Flags
+b16 64         # ELF header size
+b16 56         # Program header entry size
+b16 1          # Program header count
+b16 64         # Section header entry size
+b16 2          # Section header count
+b16 1          # Section header strtab section index
+
+## Program header ##
+
+# Entry 0
+b32 1          # Type (load)
+b32 7          # Flags (0b111 = RWX)
+b64 0          # Offset
+b64 0x401000   # Virtual address
+b64 0x401000   # Physical address
+b64 $max       # In file size
+b64 $max       # In memory size
+b64 0          # Alignment
+
+
+
+## Code ##
+align 120
+
+
+if .file
+    file .file
+elif .code
+    str .code
+    x 90              # NOP
+    x b8 3c 00 00 00  # mov eax, 60
+    x 31 ff           # xor edi, edi
+    x 0f 05           # syscall
+else
+    error "Please specifie a 'file' or 'code' option."
+    help
+endif
+
+if $size > $max
+    error "Maximum size exceeded."
+    help
+endif

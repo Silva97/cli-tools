@@ -1,0 +1,6 @@
+#ifndef _{{name|HEADER}}_H
+#define _{{name|HEADER}}_H
+
+
+
+#endif /* _{{name|HEADER}}_H */

@@ -1,0 +1,609 @@
+#!/usr/bin/env bash
+
+#####################
+# Developed by Luiz Felipe (2019)
+#   https://github.com/Silva97
+#   felipe.silva337@yahoo.com
+#
+# Distributed under the MIT License.
+# For see more details, see the LICENSE file.
+#####################
+
+AUTHOR="Luiz Felipe <https://github.com/Silva97>"
+LICENSE="MIT License"
+EX="${0##[^\.]*/}"
+CR="\x1B[91;1m"
+CG="\x1B[92;1m"
+CY="\x1B[93;1m"
+CB="\x1B[94;1m"
+CM="\x1B[95;1m"
+CC="\x1B[96;1m"
+CW="\x1B[97;1m"
+CN="\x1B[0m"
+logs=~/.logs
+
+
+if [ $# -eq 0 ] || [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+    echo "Developed by $AUTHOR"
+    echo "Distributed under the $LICENSE."
+    echo
+    echo "$EX start [section]       Create or restore a section."
+    echo "$EX list                  List all existent sections."
+    echo "$EX delete <section>      Delete a section."
+    echo "$EX view <section> [cid]  Show the command list of a section."
+    echo "$EX navigate <section>    Navigate in the command's history of a section."
+    echo "$EX strip <section> <cid> Strip one or more commands of the section's log."
+    echo "$EX cmd <command>         Log one command to a file in local directory."
+    echo "$EX export-text <section> Export a section in text format."
+    echo "$EX export-html <section> Export a section in HTML format."
+    echo "$EX import <sec> <file>   Import a exported text file."
+    echo "$EX [-h,--help]           Show this minimal help."
+    echo "$EX help                  Show the full help."
+
+    exit
+fi
+
+
+function log2file() {
+    local regex="s/\x1B\[[0-9]{1,2}(;[0-9]{1,2})?[GKm]//g"
+    local errlog="/tmp/_err.log"
+
+    local logfile="$1"
+    local listfile="$2"
+    shift
+    local stdout=$((eval $*) 2> "$errlog")
+
+    if grep -qE "/?log: [^:]+: $1:"< "$errlog"; then
+        cat "$errlog"
+        return 1
+    fi
+
+    cat "$errlog"  | sed -E "$regex" >> "$logfile"
+    echo "$stdout" | sed -E "$regex" >> "$logfile"
+
+    cat "$logfile"
+    return 0
+}
+
+function listparse() {
+    echo "$1" | sed -E "s/\(([0-9]+)\|([^\s]+)\s+([^\)]+)\)\s+(.*)/\1 \2 \3 \4/g"
+}
+
+function viewfile() {
+    if [ "$1" == "--" ]; then
+        local n="$2"
+        shift 2
+    fi
+
+    if ! [ -f "$logs/$1/$2.log" ]; then
+        return 1
+    fi
+
+    local line=$(cat "$logs/$1/0-list.log" | grep "($2|")
+    # CID DATE HOUR COMMAND LINE
+    local arr=($(listparse "$line"))
+
+    if [ -n "$n" ]; then
+        clear
+        echo -e "$CW[$CR${arr[1]} ${arr[2]}$CN UTC$CW]$ $CG${arr[@]:3}$CN"
+        local count=0
+        local maxrows=$(($(tput lines) - 4))
+        local cols=$(tput cols)
+
+        while IFS= read -r line; do
+            if [ $count -ge $n ]; then
+                echo "$line"
+                [ ${#line} -gt $cols ] && let count++
+            fi
+
+            let count++
+            if [ $(($count - $n)) -ge $maxrows ]; then
+                break
+            fi
+        done < "$logs/$1/$2.log"
+    else
+        echo -e "$CW[$CR${arr[1]} ${arr[2]}$CN UTC$CW]$ $CG${arr[@]:3}$CN"
+        cat "$logs/$1/$2.log"
+    fi
+
+    return 0
+}
+
+
+case $1 in
+    start);; # Do nothing
+    help)
+        echo "Developed by $AUTHOR"
+        echo "Distributed under the $LICENSE."
+        echo
+        echo "This tool creates a shell section to log the commads and save the output"
+        echo "to future consult."
+        echo "Is possible restore the section, view the output of a previous command"
+        echo "and export the log in simple text or HTML."
+        echo "See commands below:"
+        echo
+        echo "$EX start [section]"
+        echo "    Creates a new section named 'section'."
+        echo "    If the section exists, restore the section."
+        echo "    If a name is not specified, creates a new section with a name in"
+        echo "    the format: logDATE-HOUR"
+        echo
+        echo "$EX list"
+        echo "    List all created sections."
+        echo
+        echo "$EX delete <section>"
+        echo "    Delete a section, use it with care."
+        echo
+        echo "$EX view <section> [cid]"
+        echo "    If 'cid' is not specified, show the list of commands of a section."
+        echo "    'cid' is the command ID, if specified show all the log information"
+        echo "    of the command."
+        echo "    The list's entry follows the format: (CID|DATE HOUR) COMMAND LINE"
+        echo
+        echo "$EX navigate <section>"
+        echo "    Navigate by the all log of a section."
+        echo "    Use the left and right arrow keys to navigate by the commands."
+        echo "    And use the up and down arrow keys to scroll up/down the output."
+        echo "    Insert 'q' and press enter to quit."
+        echo
+        echo "$EX strip <section> <cid_start> [cid_end]"
+        echo "    Strip one or more commands of a section's log. If cid_end is defined,"
+        echo "    removes the range of commands from cid_start to cid_end."
+        echo "    Otherwise, removes cid_start."
+        echo
+        echo "$EX cmd <command line>"
+        echo "    Log one command line to a file in the local directory."
+        echo "    The filename follows the format: COMMAND-HOUR.log"
+        echo
+        echo "$EX export-text <section> [filename]"
+        echo "    Export one section in text format. If the filename is not"
+        echo "    specified, the output file have the name: SECTION-export.txt"
+        echo "    The exported section have all the commands and yours outputs"
+        echo "    following the format of a terminal output."
+        echo
+        echo "$EX export-html <section> [filename]"
+        echo "    Like export-text, but exports in HTML format."
+        echo "    The colors are easily manualy editable in the HTML file."
+        echo
+        echo "$EX import <section> <filename>"
+        echo "    Import a exported section in text format."
+        echo
+        echo "SECTION SHELL"
+        echo "    Using the command 'start' you start a section shell and log"
+        echo "    the typed commands. This shell have special commands for interact"
+        echo "    with the section. See bellow:"
+        echo
+        echo "    @ <command line>    Run a command line without log it."
+        echo "    * [cid]             Like 'view' command for the actual section."
+        echo "    *l [cid]            Like the '*' but piping the output to less command."
+        echo
+        echo "    Many commands by default don't is loged. See list:"
+        echo "      $EX,man,help,nano,vi,vim,links2,lynx"
+        echo "      cd,pushd,popd,ls,ps,fg"
+        echo
+        echo "    The prompt of the section shell have the format:"
+        echo "      (CID) USERNAME@HOSTNAME [PWD]"
+        echo "      >"
+        echo "    The 'CID' is the command ID of the next command executed."
+        echo
+        echo "For see a minimal version of this help, just run:"
+        echo "  $EX -h"
+        echo
+
+        exit
+        ;;
+    list)
+        ls "$logs"
+        exit
+        ;;
+    view)
+        if [ -z "$2" ]; then
+            echo "Specifies a section name." >&2
+            echo "  $EX view <section> [cid]">&2
+            exit 1
+        fi
+
+        if ! [ -d "$logs/$2" ]; then
+            echo "Log section '$2' not found.">&2
+            exit 1
+        fi
+
+        if [ $(($3)) -ge 1 ]; then
+            fname="$logs/$2/$3.log"
+
+            viewfile $2 $3
+            if [ $? -ne 0 ]; then
+                echo "CID $3 log not found in '$2'">&2
+                exit 1
+            fi
+        else
+            cat "$logs/$2/0-list.log"
+        fi
+
+        exit
+        ;;
+    navigate)
+        if [ -z "$2" ]; then
+            echo "Specifies a section name.">&2
+            echo "  $EX navigate <section>" >&2
+            exit 1
+        fi
+
+        if ! [ -d "$logs/$2" ]; then
+            echo "Log section '$2' not found.">&2
+            exit 1
+        fi
+
+        cid=1
+        line=0
+        ESC=$(echo -ne "\x1b")
+        CPOS=$(tput lines)
+
+        viewfile -- $line $2 1
+        echo -ne "$ESC[${CPOS}d"
+        while read -n3 -p "$cid: "; do
+            _cid=$cid
+            _line=$line
+
+            case $REPLY in
+                "$ESC[A") # Up arrow
+                    let line-=3
+                    [ $line -lt 0 ] && line=0
+                    ;;
+                "$ESC[B") # Down arrow
+                    let line+=3
+                    ;;
+                "$ESC[C") # Right arrow
+                    let cid++
+                    line=0
+                    ;;
+                "$ESC[D") # Left arrow
+                    if [ $cid -gt 1 ]; then
+                        let cid--
+                        line=0
+                    fi
+                    ;;
+                "q")
+                    clear
+                    exit
+                    ;;
+            esac
+
+
+            viewfile -- $line $2 $cid
+            if [ $? -ne 0 ]; then
+                cid=$_cid
+                line=$_line
+            fi
+
+            echo -ne "$ESC[${CPOS}d         "
+            echo -ne "\r"
+        done
+        exit
+        ;;
+    delete)
+        if [ -z "$2" ]; then
+            echo "Specifies a section name.">&2
+            echo "  $EX delete <section>"   >&2
+            exit 1
+        fi
+
+        if [ -d "$logs/$2" ]; then
+            read -n1 -p "You want delete section '$2'? [y/N] "
+            echo
+
+            [ "$REPLY" == "y" ] && (
+                rm -r "$logs/$2"
+                echo "Section '$2' deleted."
+            )
+        else
+            echo "Log section '$2' not found.">&2
+            exit 1
+        fi
+
+        exit
+        ;;
+    strip)
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            echo "Specifies a section name and CID."          >&2
+            echo "  $EX strip <section> <cid_start> [cid_end]">&2
+            exit 1
+        fi
+
+        if [ -d "$logs/$2" ]; then
+            if [ -z "$4" ]; then
+                line=$3
+            else
+                line=$(seq -s "|" $3 $4)
+            fi
+
+            file="$logs/$2/0-list.log"
+            grep -E "\(($line)\|" "$file"
+
+            echo
+            read -n1 -p "You want delete ALL these entries in section '$2'? [y/N] "
+            echo
+
+            [ "$REPLY" == "y" ] && (
+                content=$(grep -vE "\(($line)\|" "$file")
+                echo "$content" > "$file"
+
+                if [ -z "$4" ]; then
+                    rm "$logs/$2/$3.log"
+                else
+                    for i in $(seq $3 $4); do
+                        rm "$logs/$2/$i.log"
+                    done
+                fi
+
+                echo "Done!"
+            )
+        else
+            echo "Log section '$2' not found.">&2
+            exit 1
+        fi
+
+        exit
+        ;;
+    cmd)
+        if [ -z "$2" ]; then
+            echo "Specifies a command line.">&2
+            echo "  $EX cmd <command line>" >&2
+            exit 1
+        fi
+
+        shift
+        fname="$1-$(date +%H%M%S).log"
+        echo "[$(date +"%m/%d/%Y %H:%M") UTC]$ $*" > "$fname"
+        log2file "$fname" $*
+        exit
+        ;;
+    import)
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            echo "Specifies a section and filename.">&2
+            echo "  $EX import <section> <filename>">&2
+            exit 1
+        elif ! [ -f "$3" ]; then
+            echo "File '$3' not found.">&2
+            exit 1
+        elif [ -d "$logs/$2" ]; then
+            read -n1 -p "Section '$2' already exists. Overwrite? [y/N] "
+            echo
+
+            [ "$REPLY" != "y" ] && exit
+            rm $logs/$2/*
+        else
+            mkdir -p "$logs/$2"
+        fi
+
+        logdir="$logs/$2"
+        cid=0
+        while IFS= read -r line; do
+            if echo "$line" | grep -qE '\[[0-9\/: ]+UTC\]\$'; then
+                let cid++
+                arr=($(echo "$line" | sed -E \
+                     's/\[([0-9\/]+)\s+([0-9:]+)\s+UTC\]\$\s+(.+)/\1 \2 \3/'))
+                echo "($cid|${arr[0]} ${arr[1]}) ${arr[@]:2}" >> "$logdir/0-list.log"
+            elif ! echo "$line" | grep -qE '^-+$'; then
+                echo "$line" >> "$logdir/$cid.log"
+            fi
+        done < "$3"
+
+        exit
+        ;;
+    export-text)
+        if [ -z "$2" ]; then
+            echo "Specifies a section name."  >&2
+            echo "  $EX export-text <section>">&2
+            exit 1
+        fi
+
+        if ! [ -d "$logs/$2" ]; then
+            echo "Log section '$2' not found.">&2
+            exit 1
+        fi
+
+        if [ -n "$3" ]; then
+            output="$3"
+        else
+            output="$2-export.txt"
+        fi
+
+        echo   > "$output"
+        exec 3<> "$output"
+        while read -r line; do
+            # CID DATE HOUR COMMAND LINE
+            arr=($(listparse "$line"))
+            cid="${arr[0]}"
+            date="${arr[1]}"
+            hour="${arr[2]}"
+            cmd="${arr[@]:3}"
+
+            if ! [ -f "$logs/$2/$cid.log" ]; then
+                echo "Error on read CID $cid: File not found.">&2
+                exit 2
+            fi
+
+            echo "[$date $hour UTC]$ $cmd">&3
+            cat  "$logs/$2/$cid.log"      >&3
+            echo "-----------------------">&3
+        done < "$logs/$2/0-list.log"
+
+        echo "Log section '$2' exported to file '$output'"
+        exit
+        ;;
+    export-html)
+        if [ -z "$2" ]; then
+            echo "Specifies a section name."  >&2
+            echo "  $EX export-html <section>">&2
+            exit 1
+        fi
+
+        if ! [ -d "$logs/$2" ]; then
+            echo "Log section '$2' not found.">&2
+            exit 1
+        fi
+
+        if [ -n "$3" ]; then
+            output="$3"
+        else
+            output="$2-export.html"
+        fi
+
+        echo   > "$output"
+        exec 3<> "$output"
+        (
+            echo "<!DOCTYPE html>"
+            echo "<html>"
+            echo "<head>"
+            echo "<title>$2 log</title>"
+            echo "<meta charset='utf-8'>"
+            echo "<style>"
+            echo "    body {"
+            echo "        background:  #000;"
+            echo "        color:       #ddd;"
+            echo "        font-size:   16px;"
+            echo "        font-family: monospace;"
+            echo "    }"
+            echo
+            echo "    .c-special {"
+            echo "        color:       white;"
+            echo "        font-weight: bold;"
+            echo "    }"
+            echo
+            echo "    .c-date {"
+            echo "        color: #d33;"
+            echo "    }"
+            echo
+            echo "    .c-cmd {"
+            echo "        color: #36dd36;"
+            echo "    }"
+            echo "</style>"
+            echo "</head>"
+            echo "<body>"
+            echo "<pre>"
+        )>&3
+
+        TS="<span class='c-special'>%</span>"
+        TD="<span class='c-date'>%</span>"
+        TC="<span class='c-cmd'>%</span>"
+
+        while read -r line; do
+            # CID DATE HOUR COMMAND LINE
+            arr=($(listparse "$line"))
+            cid="${arr[0]}"
+            date="${arr[1]}"
+            hour="${arr[2]}"
+            cmd="${arr[@]:3}"
+
+            if ! [ -f "$logs/$2/$cid.log" ]; then
+                echo "Error on read CID $cid: File not found.">&2
+                exit 2
+            fi
+
+            echo "${TS/\%/[}${TD/\%/$date $hour} UTC${TS/\%/]$} ${TC/\%/$cmd}">&3
+            cat "$logs/$2/$cid.log">&3
+            echo "<hr>">&3
+        done < "$logs/$2/0-list.log"
+
+        (
+            echo "</pre>"
+            echo "</body>"
+            echo "</html>"
+        )>&3
+
+        echo "Log '$2' exported to file '$output'"
+        exit
+        ;;
+    *)
+        echo "What you want?"  >&2
+        echo "See help: $EX -h">&2
+        exit 1
+        ;;
+esac
+
+
+if [ -n "$2" ]; then
+    logdir="$logs/$2"
+else
+    logdir="$logs/log$(date +%m%d%Y-%H.%M)"
+fi
+
+mkdir -p "$logdir" || (
+    echo "'$logdir' is not a valid directory name." >&2
+    exit
+)
+
+echo "Logging commands to section '$2'..."
+echo "Type 'exit' to finalize the section."
+echo
+
+last=$(find "$logdir" -type f -iname "*.log" | sort | tail -n1 \
+       | sed -E "s/^.*\/([0-9]+)\.log/\1/g")
+
+if [ $(($last)) -gt 0 ]; then
+    cid=$(($last + 1))
+else
+    cid=1
+fi
+
+
+loglist="$logdir/0-list.log"
+loghist="$logdir/0-history"
+
+history -r "$loghist"
+while true; do
+    echo -e "$CW($CM$cid$CW) $CG$USER@$HOSTNAME $CW[$CB${PWD/$HOME/\~}$CW]$CN"
+    read -ep "> " -a cmd
+    history -s "${cmd[@]}"
+
+    case ${cmd[0]} in
+          "") continue;;
+        exit)
+            echo "$(($cid-1)) commands logeds in section '$2'"
+            history -w "$loghist"
+            exit
+            ;;
+        $0|$EX|man|help|cd|pushd|popd|ls|ps|fg|nano|vi|vim|links2|lynx)
+            eval ${cmd[@]}
+            continue
+            ;;
+        @)
+            eval ${cmd[@]:1}
+            continue
+            ;;
+        "*"|"*l")
+            if [ $((${cmd[1]})) -ge $cid ]; then
+                echo "I don't have a time machine.">&2
+            elif [ $((${cmd[1]})) -ge 1 ]; then
+                fname="$logdir/${cmd[1]}.log"
+
+                if [ -f "$fname" ]; then
+                    if [ "${cmd[0]}" == "*l" ]; then
+                        cat "$fname" | less
+                    else
+                        cat "$fname"
+                    fi
+                else
+                    echo "CID ${cmd[1]} log not found.">&2
+                fi
+            else
+                if [ "${cmd[0]}" == "*l" ]; then
+                    cat "$loglist" | less
+                else
+                    cat "$loglist"
+                fi
+            fi
+
+            continue
+            ;;
+    esac
+
+    logfile="$logdir/$cid.log"
+    log2file "$logfile" ${cmd[@]}
+
+    if [ $? -eq 0 ]; then
+        echo "($cid|$(date +"%m/%d/%Y %H:%M")) ${cmd[@]}" >> "$loglist"
+        let cid++
+    fi
+done
