@@ -603,7 +603,7 @@ while true; do
     log2file "$logfile" ${cmd[@]}
 
     if [ $? -eq 0 ]; then
-        echo "($cid|$(date +"%m/%d/%Y %H:%M")) ${cmd[@]}" >> "$loglist"
+        echo "($cid|$(date --utc +"%m/%d/%Y %H:%M")) ${cmd[@]}" >> "$loglist"
         let cid++
     fi
 done
