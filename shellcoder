@@ -88,6 +88,10 @@ while true; do
             echo "  nasm        NASM syntax   | shellcode: db 0x0A, 0x0B, 0x0C"
             echo "  raw         Raw binary code"
             ;;
+          sys|syscall)
+            echo "Shows information about a syscall with the current bit-mode."
+            echo "Example: /syscall write"
+            ;;
           *)
             echo "/e, /exit                       Exit."
             echo "/b, /bits [bits]                Sets or shows bits mode."
@@ -95,6 +99,7 @@ while true; do
             echo "/erase                          Erases the shellcode."
             echo "/show <format>                  Shows the shellcode."
             echo "/export <format> [filename]     Exports the shellcode."
+            echo "/sys, /syscall <name>           Shows syscall information."
             echo
             echo "For detailed help: /help command-name"
             ;;
@@ -106,7 +111,7 @@ while true; do
       b|bits)
         if [ -z "${list[1]}" ]; then
           echo "$bits"
-        elif echo "${list[1]}" | grep -q "^(16|32|64)$"; then
+        elif echo "${list[1]}" | grep -qE "^(16|32|64)$"; then
           bits=${list[1]}
         else
           echo "Error: Bits must be 16, 32 or 64."
@@ -224,6 +229,32 @@ while true; do
         esac
 
         echo "Shellcode exported to '$output' file."
+        ;;
+      sys|syscall)
+        if [ "$bits" == "16" ]; then
+          echo "Error: Syscall is not valid to 16-bit mode."
+          continue
+        fi
+
+        path="/usr/include/asm/unistd_${bits}.h"
+
+        if [ ! -f "$path" ]; then
+          echo "Error: Sorry but i am not found '$path'"
+          continue
+        fi
+
+        if [ "$bits" == "64" ]; then
+          echo "Instruction: syscall"
+          echo "RAX | RDI | RSI | RDX | R10 | R8 | R9"
+          echo -n "RAX = "
+        else
+          echo "Instruction: int 0x80"
+          echo "EAX | EBX | ECX | EDX | ESI | EDI"
+          echo -n "EAX = "
+        fi
+
+        cat "$path" | grep "NR_${list[1]} " | grep -oE "\w+$"
+        man "${list[1]}.2" | grep "${list[1]}" | head -n2
         ;;
       *)
         echo "Command '${list[0]}' not exists."
