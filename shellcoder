@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+
+# Developed by Luiz Felipe <felipe.silva337@yahoo.com>
+# GitHub: https://github.com/Silva97
+
+
+if ! which nasm > /dev/null; then
+  echo "This script uses nasm and ndisasm - https://nasm.us/"
+  echo "Please, install it:"
+  echo "  $ sudo apt install nasm"
+  exit 1
+fi
+
+
+bits=32
+tempasm=$(mktemp "/tmp/XXXXXX.asm")
+tempbin=$(mktemp "/tmp/XXXXXX.bin")
+blacklist="00"
+shellcode=""
+
+function pcolor() {
+  local color
+
+  case $1 in
+    red)  color="\x1b[31;1m" ;;
+  esac
+
+  echo -ne "${color}${2}\x1b[0m"
+}
+
+function showbyte() {
+  if echo "$blacklist" | grep -q "$1"; then
+    pcolor red "$1 "
+  else
+    echo -n "$1 "
+  fi
+}
+
+echo "Developed by Luiz Felipe <felipe.silva337@yahoo.com>"
+echo "GitHub: https://github.com/Silva97"
+echo
+echo "For see help: /help"
+
+while true; do
+  read -ep "shellcoder> " command
+  history -s "$command"
+
+  if [ "${command:0:1}" == "/" ]; then
+    list=($command)
+
+    case "${list[0]:1}" in
+      help)
+        case "${list[1]}" in
+          e|exit)
+            echo "Exit from the shellcoder."
+            ;;
+          b|bits)
+            echo "Sets the bit-mode for assembly the instructions."
+            echo "If value is not defined, just print the current bit-mode."
+            ;;
+          black|blacklist)
+            echo "Sets the list of invalid bytes to the shellcode."
+            echo "Any byte on this list is printed in another color."
+            echo "Example: /blacklist 00 0A 0D 20 09"
+            echo
+            echo "If value is not defined, just print the current blacklist."
+            echo "For set a void blacklist, run: /blacklist -"
+            ;;
+          erase)
+            echo "Erases the current shellcode."
+            ;;
+          show)
+            echo "Shows the current shellcode."
+            echo "Formats:"
+            echo "  asm    Shows the disassembly of the shellcode."
+            echo "  hexa   Shows the shellcode in hexadecimal."
+            ;;
+          export)
+            echo "Writes the shellcode in a file."
+            echo "  format      The format to export."
+            echo "  filename    The output file."
+            echo
+            echo "Valid formats:"
+            echo "  hexa        Byte sequence in hexadecimal: 0A 0B 0C"
+            echo '  string      C string      | char shellcode[] = "\x0A\x0B\x0C";'
+            echo "  array       C array       | char shellcode[] = {0x0A, 0x0B, 0x0C};"
+            echo '  python      Python string | shellcode = "\x0A\x0B\x0C"'
+            echo "  nasm        NASM syntax   | shellcode: db 0x0A, 0x0B, 0x0C"
+            echo "  raw         Raw binary code"
+            ;;
+          *)
+            echo "/e, /exit                       Exit."
+            echo "/b, /bits [bits]                Sets or shows bits mode."
+            echo "/black, /blacklist [XX XX..]    Sets or shows bytes blacklist."
+            echo "/erase                          Erases the shellcode."
+            echo "/show <format>                  Shows the shellcode."
+            echo "/export <format> [filename]     Exports the shellcode."
+            echo
+            echo "For detailed help: /help command-name"
+            ;;
+        esac
+        ;;
+      e|exit)
+        exit 0
+        ;;
+      b|bits)
+        if [ -z "${list[1]}" ]; then
+          echo "$bits"
+        elif echo "${list[1]}" | grep -q "^(16|32|64)$"; then
+          bits=${list[1]}
+        else
+          echo "Error: Bits must be 16, 32 or 64."
+        fi
+        ;;
+      black|blacklist)
+        if [ -z "${list[1]}" ]; then
+          echo "$blacklist"
+        elif [ "${list[1]}" == "-" ]; then
+          blacklist=""
+        elif [ -z "$(echo "${list[*]:1}" | sed -E 's/([A-F0-9]{2}(\s|$))+//')" ]; then
+          blacklist=${list[*]:1}
+        else
+          echo "Error: The format of the bytes is invalid."
+          echo "See help: /help blacklist"
+        fi
+        ;;
+     erase)
+        shellcode=""
+        ;;
+     show)
+        case "${list[1]}" in
+          asm)
+            echo -n > "$tempbin"
+
+            for ((i=0; i<${#shellcode}; i+=3)); do
+                echo -ne "\x${shellcode:$i:2}" >> "$tempbin"
+            done
+
+            ndisasm -b$bits "$tempbin"
+            ;;
+          hexa)
+            for ((i=0; i<${#shellcode}; i+=3)); do
+              showbyte "${shellcode:$i:2}"
+            done
+
+            echo
+            ;;
+          *)
+            echo "Error: Invalid format. See help: /help show"
+            ;;
+        esac
+        ;;
+     export)
+        if [ ! -z "${list[2]}" ]; then
+          output="${list[2]}"
+        else
+          if [ "${list[1]}" == "raw" ]; then
+            output="shell-raw${RANDOM}.bin"
+          else
+            output="shell-${list[1]}${RANDOM}.txt"
+          fi
+        fi
+
+        case "${list[1]}" in
+          hexa)
+            echo "$shellcode" >> "$output"
+            ;;
+          string)
+            echo -n "char shellcode[] = \"" >> "$output"
+
+            for ((i=0; i<${#shellcode}; i+=3)); do
+              echo -n "\x${shellcode:$i:2}" >> "$output"
+            done
+
+            echo "\";" >> "$output"
+            ;;
+          python)
+            echo -n "shellcode = \"" >> "$output"
+
+            for ((i=0; i<${#shellcode}; i+=3)); do
+              echo -n "\x${shellcode:$i:2}" >> "$output"
+            done
+
+            echo "\"" >> "$output"
+            ;;
+          array)
+            echo -n "char shellcode[] = {" >> "$output"
+
+            for ((i=0; i<${#shellcode}; i+=3)); do
+              if [ $i -ge $((${#shellcode}-3)) ]; then
+                echo -n "0x${shellcode:$i:2}" >> "$output"
+              else
+                echo -n "0x${shellcode:$i:2}, " >> "$output"
+              fi
+            done
+
+            echo "};" >> "$output"
+            ;;
+          nasm)
+            echo -n "shellcode: db " >> "$output"
+
+            for ((i=0; i<${#shellcode}; i+=3)); do
+              if [ $i -ge $((${#shellcode}-3)) ]; then
+                echo -n "0x${shellcode:$i:2}" >> "$output"
+              else
+                echo -n "0x${shellcode:$i:2}, " >> "$output"
+              fi
+            done
+
+            echo >> "$output"
+            ;;
+          raw)
+            echo -n > "$output"
+
+            for ((i=0; i<${#shellcode}; i+=3)); do
+                echo -ne "\x${shellcode:$i:2}" >> "$output"
+            done
+
+            ;;
+          *)
+            echo "Format not valid. See help: /help export"
+            continue
+            ;;
+        esac
+
+        echo "Shellcode exported to '$output' file."
+        ;;
+      *)
+        echo "Command '${list[0]}' not exists."
+        echo "See help: /help"
+        ;;
+    esac
+  else
+    (
+      echo "bits $bits"
+      echo "$command"
+    ) > "$tempasm"
+
+    nasm "$tempasm" -o "$tempbin"
+    code=$(ndisasm -b$bits "$tempbin" | sed -E 's/\w+\s+(\w+)\s+(.+)/\1/')
+
+    for ((i=0; i<${#code}; i+=2)); do
+      byte=${code:$i:2}
+
+      showbyte "$byte"
+      shellcode+="$byte "
+    done
+
+    echo
+  fi
+done

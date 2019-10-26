@@ -18,3 +18,6 @@ Creates a new text or binary file using templates.
 The texts templates have special tags to insert content by option, file or environment variable.
 The binaries templates is a sequence of commands to construct a binary format.
 For see examples of templates, see the [templates](./templates) directory.
+
+## shellcoder
+Tool for write shellcodes using nasm. For see help, run the tool and insert "/help"
