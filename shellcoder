@@ -254,7 +254,7 @@ while true; do
         fi
 
         cat "$path" | grep "NR_${list[1]} " | grep -oE "\w+$"
-        man "${list[1]}.2" | grep "${list[1]}" | head -n2
+        man "${list[1]}.2" | grep -A1 "${list[1]}" | head -n5 | grep -vE "\--|^$"
         ;;
       *)
         echo "Command '${list[0]}' not exists."
@@ -269,14 +269,21 @@ while true; do
 
     nasm "$tempasm" -o "$tempbin"
     code=$(ndisasm -b$bits "$tempbin" | sed -E 's/\w+\s+(\w+)\s+(.+)/\1/')
+    endcode=$(echo "$code" | sed -E 's/[A-F0-9]{2}/& /g')
+    insert=1
 
     for ((i=0; i<${#code}; i+=2)); do
       byte=${code:$i:2}
 
       showbyte "$byte"
-      shellcode+="$byte "
+      if echo "$blacklist" | grep -q "$byte"; then
+        insert=0
+      fi
     done
 
+    if [ $insert -eq 1 ]; then
+      shellcode+="$endcode"
+    fi
     echo
   fi
 done
