@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+
+# Developed by Luiz Felipe <felipe.silva337@yahoo.com>
+# GitHub: https://github.com/Silva97
+
+tmpdir="/tmp"
+
+if [ $# -eq 0 ] || [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+  echo "Developed by Luiz Felipe <felipe.silva337@yahoo.com>"
+  echo "GitHub: https://github.com/Silva97"
+  echo
+  echo "This tool encrypts strings from the C source code and inserts static functions"
+  echo "to decrypt in runtime."
+  echo
+  echo "Usage: ccs [options] source1.c [source2.c source3.c...]"
+  echo "  Creates the sources with encrypted strings in the temporary directory and"
+  echo "  echoes the full path of the files."
+  echo
+  echo "Example of usage:"
+  echo "  gcc \`ccs main.c module.c\` -o myprogram"
+  echo
+  echo "OPTIONS"
+  echo "  -t <directory>    Sets the directory to save the files. Default '$tmpdir'"
+  echo
+  echo "ENCRYPTED STRINGS"
+  echo "  In the C source code, use the pseudo macro _E() to encrypted"
+  echo "  strings. Example:"
+  echo "    char password[] = _E(\"my-passwd\"); // This is encrypted by CCS"
+  echo
+  echo "FUNCTIONS"
+  echo "  Static functions are inserted in the source code with the algorithm"
+  echo "  to decrypt the encrypted string."
+  echo
+  echo "  static char *cdec(char *string)"
+  echo "    string    - Pointer to string to be decrypted."
+  echo
+  echo "    Decrypt the string rewriting the memory pointed by \`string'."
+  echo "    Returns \`string' if successful."
+  echo
+  echo "  static int cchar(char *string)"
+  echo "    string    - Pointer to string to get the decrypted char."
+  echo
+  echo "    If \`string' is NULL, gets the next char of the previous defined"
+  echo "    string. Otherwise sets a new string to get the chars and returns"
+  echo "    the first character decrypted. The usage of this function is similar to strtok()."
+  echo "    Returns 0 if reached to NUL terminator. Otherwise returns the decrypted char."
+  exit 0
+elif [ "$1" == "-t" ]; then
+  tmpdir="$2"
+  shift 2
+fi
+
+function ord() {
+  printf "%d" "'$1"
+}
+
+function chr() {
+  echo -ne "\\x`printf '%x' "$1"`"
+}
+
+
+while [ ! -z "$1" ]; do
+  if [ ! -f "$1" ]; then
+    echo "File '$1' not found."
+    exit 1
+  fi
+
+  oseed=$RANDOM
+  nmax=10
+  output=$(mktemp "$tmpdir/ccs_XXXXXXXX.c")
+
+  (
+    echo "static int cchar(char *string) {"
+    echo "  static int seed = $oseed;"
+    echo "  static char *addr;"
+
+    echo "  if (string) {"
+    echo "    addr = string;"
+    echo "    seed = $oseed;"
+    echo "  }"
+
+    echo "  if (!*addr) {"
+    echo "    return 0;"
+    echo "  }"
+
+    echo "  seed = (seed * 7) % 65536;"
+    echo "  return *addr++ - (seed % $nmax);"
+    echo "}"
+
+    echo "static char *cdec(char *string) {"
+    echo "  char *addr = string;"
+    echo "  int seed   = $oseed;"
+
+    echo "  while (*addr != '\0') {"
+    echo "    seed   = (seed * 7) % 65536;"
+    echo "    *addr -= seed % $nmax;"
+    echo "    addr++;"
+    echo "  }"
+
+    echo "  return string;"
+    echo "}"
+  ) > "$output"
+
+  exec 3<>"$1"
+
+  while read -reu3 line; do
+    match="$(echo "$line" | grep -oE '_E\("[^"]+"\)')"
+    if [ ! -z "$match" ]; then
+      string=""
+      seed=$oseed
+
+      for ((i=4; i<${#match}; i++)); do
+        [ "${match:$i:1}" == '"' ] && break
+
+        seed=$(( ($seed*7) % 65536 ))
+        n=`ord "${match:$i:1}"`
+        string+="\\\x$(printf '%x' "$(($n + (seed % $nmax)))")"
+      done
+
+      match="${match/(/\\(}"
+      match="${match/)/\\)}"
+      line=$(echo "$line" | sed -E "s/$match/\"$string\"/")
+    fi
+
+    echo "$line" >> "$output"
+  done
+
+  echo "$output"
+  shift
+done

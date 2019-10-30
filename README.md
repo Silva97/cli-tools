@@ -21,3 +21,27 @@ For see examples of templates, see the [templates](./templates) directory.
 
 ## shellcoder
 Tool for write shellcodes using nasm. For see help, run the tool and insert "/help"
+
+## ccs
+Encrypts literal strings in C source code to be decrypted in runtime.  
+Example:
+```c
+#include <stdio.h>
+#include <string.h>
+
+int main(void)
+{
+  char input[65];
+  char passwd[] = _E("my-password");
+
+  scanf("%64[^\n]", input);
+
+  if ( !strcmp(input, cdec(passwd)) ) {
+    puts("Welcome back!");
+  } else {
+    puts("Who are you?");
+  }
+
+  return 0;
+}
+```
