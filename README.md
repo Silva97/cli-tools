@@ -45,3 +45,6 @@ int main(void)
   return 0;
 }
 ```
+## pack
+This tool packs a bash script in one output file, including the loaded files
+with `source` instruction like the C `#include` directive.

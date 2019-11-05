@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+
+incdir="."
+shebang="#!/usr/bin/env bash"
+output=""
+
+while [ "${1:0:1}" == "-" ]; do
+  case "$1" in
+    --include|-I)
+      incdir+=":$2"
+      shift
+      ;;
+    --output|-o)
+      output="$2"
+      shift
+      ;;
+    --shebang|-s)
+      shebang="$2"
+      shift
+      ;;
+    --help|-h)
+      echo "Developed by Luiz Felipe <felipe.silva337@yahoo.com>"
+      echo "Distributed under the MIT License."
+      echo
+      echo "This tool packs a bash script in one output file, including the"
+      echo "loaded files with 'source' instruction like the C #include directive."
+      echo
+      echo "Usage:  ./pack [options] source-file"
+      echo
+      echo "  source-file    The bash source file to pack"
+      echo
+      echo "OPTIONS"
+      echo "  --output,-o    Sets the output file name"
+      echo "  --include,-I   Sets the include's directories list. Use ':' to"
+      echo "                 separate multiple directories."
+      echo "  --shebang,-s   Sets the shebang to final script."
+
+      exit 0
+      ;;
+  esac
+
+  shift
+done
+
+if [ -z "$output" ]; then
+  output="${1%%.*}.shp"
+fi
+
+if [ -z "$1" ]; then
+  echo "Usage:  ./pack [options] source-file"
+  echo "See help: $0 --help"
+  exit 0
+elif [ ! -f "$1" ]; then
+  echo "File '$1' not found." >&2
+  exit 1
+fi
+
+
+
+function include() {
+  local input=""
+  IFS=":" read -ra list <<< "$incdir"
+
+  for dir in "${list[@]}"; do
+    if [ -f "$dir/$1" ]; then
+      local input="$dir/$1"
+      break
+    fi
+  done
+
+  if [ -z "$input" ]; then
+    echo "Source file '$1' not found in include's directories." >&2
+    exit 1
+  fi
+
+  while read -r line; do
+  	if [[ "$line" =~ ^\s*(source|\.)( )+(.*) ]]; then
+      local file=$(echo "$line" | sed -E "s/^\s*(source|\.)\s+(\"|')?([^\"']+).*/\3/")
+      include "$file"
+    else
+      echo "$line" | sed -E "s/^#\!.*|\#[^\"']+$//"
+    fi
+  done < "$input"
+
+  echo
+}
+
+(
+  echo "$shebang"
+  include "$1"
+) > "$output"
+
+chmod +x "$output"
