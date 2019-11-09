@@ -26,8 +26,11 @@ while [ "${1:0:1}" == "-" ]; do
       echo "loaded files with 'source' instruction like the C #include directive."
       echo
       echo "Usage:  ./pack [options] source1 [source2...]"
-      echo
       echo "  source         The bash source files to pack"
+      echo
+      echo "COMMANDS"
+      echo "  source 'file'        Pack the file in the script."
+      echo "  srcbin 'file' var    Saves the Base64 content of the file in the variable."
       echo
       echo "OPTIONS"
       echo "  --output,-o    Sets the output file name. Or the output directory"
