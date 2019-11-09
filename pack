@@ -2,7 +2,7 @@
 
 incdir="."
 shebang="#!/usr/bin/env bash"
-output=""
+output="."
 
 while [ "${1:0:1}" == "-" ]; do
   case "$1" in
@@ -25,12 +25,13 @@ while [ "${1:0:1}" == "-" ]; do
       echo "This tool packs a bash script in one output file, including the"
       echo "loaded files with 'source' instruction like the C #include directive."
       echo
-      echo "Usage:  ./pack [options] source-file"
+      echo "Usage:  ./pack [options] source1 [source2...]"
       echo
-      echo "  source-file    The bash source file to pack"
+      echo "  source         The bash source files to pack"
       echo
       echo "OPTIONS"
-      echo "  --output,-o    Sets the output file name"
+      echo "  --output,-o    Sets the output file name. Or the output directory"
+      echo "                 if multiples sources."
       echo "  --include,-I   Sets the include's directories list. Use ':' to"
       echo "                 separate multiple directories."
       echo "  --shebang,-s   Sets the shebang to final script."
@@ -42,12 +43,8 @@ while [ "${1:0:1}" == "-" ]; do
   shift
 done
 
-if [ -z "$output" ]; then
-  output="${1%%.*}.shp"
-fi
-
 if [ -z "$1" ]; then
-  echo "Usage:  ./pack [options] source-file"
+  echo "Usage:  ./pack [options] source1 [source2...]"
   echo "See help: $0 --help"
   exit 0
 elif [ ! -f "$1" ]; then
@@ -77,17 +74,40 @@ function include() {
   	if [[ "$line" =~ ^\s*(source|\.)( )+(.*) ]]; then
       local file=$(echo "$line" | sed -E "s/^\s*(source|\.)\s+(\"|')?([^\"']+).*/\3/")
       include "$file"
+    elif [[ "$line" =~ ^\s*srcbin( )+.* ]]; then
+      values=( $(sed -E "s/\s*srcbin\s+('|\")([^'\"]+)('|\")\s+(\S+)/\2\n\4/" <<< "$line") )
+      content="$(base64 -w0 "${values[0]}")"
+      echo "declare -g ${values[1]}=\"$content\""
     else
-      echo "$line" | sed -E "s/^#\!.*|\#[^\"']+$//"
+      echo "$line"
     fi
   done < "$input"
 
   echo
 }
 
-(
-  echo "$shebang"
-  include "$1"
-) > "$output"
+
+if [ ! -z "$2" ]; then
+  while [ ! -z "$1" ]; do
+    file=$(sed -E "s/([^\/]*\/)*([^\/]+)$/\2/" <<< "$1")
+
+    (
+      echo "$shebang"
+      include "$1"
+    ) > "${output}/${file%%.*}.shp"
+
+    shift
+  done
+else
+  if [ -d "$output" ]; then
+    file=$(sed -E "s/([^\/]*\/)*([^\/]+)$/\2/" <<< "$1")
+    output="$output/${file%%.*}.shp"
+  fi
+
+  (
+    echo "$shebang"
+    include "$1"
+  ) > "$output"
+fi
 
 chmod +x "$output"

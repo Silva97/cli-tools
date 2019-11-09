@@ -48,3 +48,6 @@ int main(void)
 ## pack
 This tool packs a bash script in one output file, including the loaded files
 with `source` instruction like the C `#include` directive.
+
+## cb
+A command-line calculator like BC.

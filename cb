@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+
+# Developed by Luiz Felipe <felipe.silva337@yahoo.com>
+# Distributed under the MIT License.
+
+if [[ "$1" =~ --?h(elp)? ]]; then
+  echo "Developed by Luiz Felipe <felipe.silva337@yahoo.com>"
+  echo "Distributed under the MIT License."
+  echo
+  echo "CB is a command-line calculator like BC."
+  echo
+  echo "USAGE"
+  echo "  You can use hexadecimal, octal or decimal numbers using the format:"
+  echo "    65    Decimal"
+  echo "    0x41  Hexadecimal"
+  echo "    0101  Octal"
+  echo
+  echo "The expression is interpreted by the \`let' command. See help of the"
+  echo "let command for more informations about operators."
+  echo
+  echo "VARIABLES"
+  echo "  The variable 'output' is the mask for the formatation of the output."
+  echo "  See help about the printf command."
+  echo "  You can set the value of a string variable using '=' operator. And"
+  echo "  any other assignment operator of the let command."
+  echo
+  echo "  For see the value of a variable, insert: \$variable_name"
+  exit 0
+fi
+
+output="%d"
+
+while read -er input; do
+  if [ -z "$input" ]; then
+    echo
+    continue
+  fi
+
+  history -s -- "$input"
+
+  if grep -qE "^[a-zA-Z0-9_]+\s*=" <<< "$input"; then
+    declare $input
+    continue
+  fi
+
+  if [[ "$input" =~ q(uit)?|e(xit)? ]]; then
+    exit 0
+  elif [[ "$input" =~ ^\$[a-zA-Z0-9_]+$ ]]; then
+    input="${input:1}"
+    echo "${!input}"
+  else
+    eval "let _result=\"$input\" 1" 2>/dev/null || {
+      eval "declare _result=\"$input\""
+      echo "Expression error: \`$_result\`" >&2
+      continue
+    }
+
+    printf "$output\n" "$_result"
+  fi
+done
