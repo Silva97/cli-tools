@@ -99,6 +99,7 @@ if [ ! -z "$2" ]; then
       include "$1"
     ) > "${output}/${file%%.*}.shp"
 
+    chmod +x "${output}/${file%%.*}.shp"
     shift
   done
 else
@@ -111,6 +112,6 @@ else
     echo "$shebang"
     include "$1"
   ) > "$output"
-fi
 
-chmod +x "$output"
+  chmod +x "$output"
+fi
