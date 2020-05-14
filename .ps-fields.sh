@@ -23,9 +23,9 @@ function git-view() {
   local branch=$(git branch 2>/dev/null)
   [ "$branch" == "" ] && return 0
 
-  branch=$(grep "*" <<< "$branch" | sed -E 's/\*\s+(\S+)/\1/')
-  track=$(git status -s   | grep -vF "??" | wc -l)
-  untrack=$(git status -s | grep -F "??"  | wc -l)
+  branch=$(grep "*" <<< "$branch"  | sed -E 's/\*\s+(\S+)/\1/')
+  track=$(git status --porcelain   | grep -vE "^(\s|\?)" | wc -l)
+  untrack=$(git status --porcelain | grep -E "^(\s|\?)"  | wc -l)
 
   case "$branch" in
     master)
